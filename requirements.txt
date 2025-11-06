@@ -1,0 +1,7 @@
+streamlit
+pdfplumber
+python-docx
+gspread
+google-auth
+openai
+python-dotenv
