@@ -1,38 +1,44 @@
 import streamlit as st
 from resume_data_extractor import extract_text_from_file
-from sheet import append_resume_data, phone_exists
+from sheet import append_resume_data
 from gpt import parse_resume_with_ai
 
 st.set_page_config(page_title="AI Resume Parser", layout="centered")
-st.title("AI Resume Parser & Google Sheet Appender")
+st.title("AI Resume Parser & Google Sheet Appender (Batch Mode)")
 
-# File uploader
-uploaded_file = st.file_uploader("Upload your resume:", type=["pdf", "docx"])
+# Allow multiple file uploads
+uploaded_files = st.file_uploader("Upload your resumes:", type=["pdf", "docx"], accept_multiple_files=True)
 
-if uploaded_file:
-    with st.spinner("Extracting text from resume..."):
-        text = extract_text_from_file(uploaded_file)
+if uploaded_files:
+    results = []  # To store parsed results for all resumes
 
-    if not text.strip():
-        st.error("No readable text found. Please upload a valid PDF or DOCX resume.")
-    else:
-        st.success("Text extracted successfully.")
+    for idx, uploaded_file in enumerate(uploaded_files):
+        st.divider()
+        st.subheader(f"Resume {idx + 1}: {uploaded_file.name}")
 
-        with st.spinner("Parsing resume details using GPT-5-mini..."):
+        with st.spinner(f"Extracting text from {uploaded_file.name}..."):
+            text = extract_text_from_file(uploaded_file)
+
+        if not text.strip():
+            st.error(f"No readable text found in {uploaded_file.name}. Skipping...")
+            continue
+
+        with st.spinner(f"Parsing details using GPT-5-mini for {uploaded_file.name}..."):
             parsed_data = parse_resume_with_ai(text)
 
-        st.subheader("Review and validate the extracted details below:")
+        st.success(f"Extracted data from {uploaded_file.name}")
 
-        # Editable fields
-        name = st.text_input("Full Name", parsed_data.get("name", ""))
-        role = st.text_input("Role / Designation", parsed_data.get("role", ""))
-        phone = st.text_input("Phone Number", parsed_data.get("phone", ""))
-        email = st.text_input("Email", parsed_data.get("email", ""))
-        linkedin = st.text_input("LinkedIn URL", parsed_data.get("linkedin_url", ""))
-        address = st.text_area("Address", parsed_data.get("address", ""))
-        comment = st.text_area("Comments (optional)", placeholder="Add any notes or remarks here...")
+        # Create editable fields for this resume
+        name = st.text_input(f"Full Name ({uploaded_file.name})", parsed_data.get("name", ""))
+        role = st.text_input(f"Role / Designation ({uploaded_file.name})", parsed_data.get("role", ""))
+        phone = st.text_input(f"Phone Number ({uploaded_file.name})", parsed_data.get("phone", ""))
+        email = st.text_input(f"Email ({uploaded_file.name})", parsed_data.get("email", ""))
+        linkedin = st.text_input(f"LinkedIn URL ({uploaded_file.name})", parsed_data.get("linkedin_url", ""))
+        address = st.text_area(f"Address ({uploaded_file.name})", parsed_data.get("address", ""))
+        comment = st.text_area(f"Comments ({uploaded_file.name})", "")
 
-        validated_data = {
+        # Collect validated info for this resume
+        resume_info = {
             "name": name.strip(),
             "role": role.strip(),
             "phone": phone.strip(),
@@ -41,20 +47,22 @@ if uploaded_file:
             "address": address.strip(),
             "comment": comment.strip()
         }
+        results.append(resume_info)
 
-        st.write("Please confirm all details before appending to Google Sheet.")
+    st.divider()
+    st.subheader("Summary of all resumes ready to upload:")
+    st.write(f"{len(results)} resumes processed")
 
-        # Check duplicate before submission
-        if st.button("Append to Google Sheet"):
-            if phone.strip() == "":
-                st.error("Please enter a valid phone number before submitting.")
-            else:
-                with st.spinner("Checking for duplicates..."):
-                    try:
-                        if phone_exists(phone.strip()):
-                            st.warning(f"Phone number {phone.strip()} already exists in the Google Sheet.")
-                        else:
-                            append_resume_data(validated_data)
-                            st.success("Resume details successfully added to Google Sheet!")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+    # Preview all data
+    st.json(results)
+
+    # Append all resumes to Google Sheet
+    if st.button("Append All to Google Sheet"):
+        success_count = 0
+        for data in results:
+            try:
+                append_resume_data(data)
+                success_count += 1
+            except Exception as e:
+                st.error(f"Error adding {data.get('name', 'Unknown')} to Google Sheet: {e}")
+        st.success(f"{success_count}/{len(results)} resumes added successfully!")
